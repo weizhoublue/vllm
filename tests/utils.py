@@ -32,6 +32,7 @@ import openai
 import pytest
 import requests
 import torch
+import torch.multiprocessing as mp
 import torch.nn.functional as F
 from openai.types.completion import Completion
 from typing_extensions import ParamSpec
@@ -1553,6 +1554,9 @@ def spawn_new_process_for_each_test(f: Callable[_P, None]) -> Callable[_P, None]
     def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> None:
         if os.environ.get(_SPAWN_CHILD_ENV) == "1":
             return f(*args, **kwargs)
+
+        with contextlib.suppress(RuntimeError):
+            mp.set_start_method("spawn")
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".tb", mode="wb") as tmp:
             tb_file = tmp.name
