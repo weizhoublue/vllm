@@ -850,6 +850,9 @@ def _prefetch_all_checkpoints(
         world_size = 1
     paths_to_prefetch = sorted_files[rank::world_size]
     total_for_rank = len(paths_to_prefetch)
+    if total_for_rank == 0:
+        return
+    effective_num_threads = min(num_prefetch_threads, total_for_rank)
 
     async def _prefetch_all() -> None:
         loop = asyncio.get_running_loop()
@@ -882,7 +885,7 @@ def _prefetch_all_checkpoints(
                 )
 
         with concurrent.futures.ThreadPoolExecutor(
-            max_workers=num_prefetch_threads
+            max_workers=effective_num_threads
         ) as executor:
             await asyncio.gather(
                 *(prefetch_one(p, executor) for p in paths_to_prefetch)
@@ -900,7 +903,7 @@ def _prefetch_all_checkpoints(
     logger.info(
         "Prefetching checkpoint files into page cache started "
         "(in background, num_threads=%d, block_size=%d bytes)",
-        num_prefetch_threads,
+        effective_num_threads,
         block_size,
     )
     threading.Thread(target=_run_prefetch, daemon=True).start()

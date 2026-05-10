@@ -2,11 +2,13 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import tempfile
+from concurrent.futures import Future
 
 import huggingface_hub.constants
 import pytest
 from huggingface_hub.utils import LocalEntryNotFoundError
 
+from vllm.model_executor.model_loader import weight_utils
 from vllm.model_executor.model_loader.weight_utils import (
     download_weights_from_hf,
     maybe_remap_kv_scale_name,
@@ -43,6 +45,51 @@ def test_download_weights_from_hf():
             )
             is not None
         )
+
+
+def test_prefetch_all_checkpoints_caps_threads_to_file_count(monkeypatch):
+    max_workers_seen: list[int] = []
+
+    class CapturingThreadPoolExecutor:
+        def __init__(self, max_workers=None, *args, **kwargs):
+            max_workers_seen.append(max_workers)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            pass
+
+        def submit(self, fn, *args, **kwargs):
+            future: Future[None] = Future()
+            try:
+                future.set_result(fn(*args, **kwargs))
+            except Exception as exc:
+                future.set_exception(exc)
+            return future
+
+    class SynchronousThread:
+        def __init__(self, target, daemon=None):
+            self.target = target
+            self.daemon = daemon
+
+        def start(self):
+            self.target()
+
+    monkeypatch.setattr(
+        weight_utils.concurrent.futures,
+        "ThreadPoolExecutor",
+        CapturingThreadPoolExecutor,
+    )
+    monkeypatch.setattr(weight_utils.threading, "Thread", SynchronousThread)
+    monkeypatch.setattr(weight_utils, "_prefetch_checkpoint", lambda *_: None)
+
+    weight_utils._prefetch_all_checkpoints(
+        ["model-00001.safetensors", "model-00002.safetensors"],
+        num_prefetch_threads=999,
+    )
+
+    assert max_workers_seen == [2]
 
 
 class TestMaybeRemapKvScaleName:
