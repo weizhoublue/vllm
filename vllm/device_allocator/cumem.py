@@ -195,6 +195,11 @@ class CuMemAllocator:
         total_bytes = 0
         backup_bytes = 0
 
+        # Drain pending kernels before cuMemUnmap, same rationale as
+        # _python_free_callback. sleep() bypasses the free callback path.
+        for device in {data.handle[0] for data in self.pointer_to_data.values()}:
+            torch.cuda.synchronize(device)
+
         for ptr, data in self.pointer_to_data.items():
             handle = data.handle
             total_bytes += handle[1]
