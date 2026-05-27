@@ -92,6 +92,13 @@ pub(super) fn validate_request_compat(
         );
     }
 
+    if request.other.contains_key("thinking_token_budget") {
+        bail_invalid_request!(
+            param = "thinking_token_budget",
+            "thinking_token_budget is not supported."
+        );
+    }
+
     if let Some(options) = &request.stream_options
         && options.continuous_usage_stats.is_some()
     {
@@ -173,6 +180,22 @@ mod tests {
         };
         assert!(
             validate_request_compat(&request, &served_names(&["Qwen/Qwen1.5-0.5B-Chat"])).is_ok()
+        );
+    }
+
+    #[test]
+    fn validate_request_compat_rejects_thinking_token_budget() {
+        let request = CompletionRequest {
+            other: serde_json::json!({
+                "thinking_token_budget": 1000
+            })
+            .as_object()
+            .unwrap()
+            .clone(),
+            ..base_request()
+        };
+        assert!(
+            validate_request_compat(&request, &served_names(&["Qwen/Qwen1.5-0.5B-Chat"])).is_err()
         );
     }
 }
