@@ -12,6 +12,7 @@ from vllm.logger import init_logger
 from vllm.model_executor.layers.attention import Attention, MLAAttention
 from vllm.model_executor.layers.quantization.base_config import QuantizeMethodBase
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
+from vllm.utils.mem_utils import release_device_memory_under_pressure
 
 from .meta import (
     SKIP_TENSORS,
@@ -315,6 +316,7 @@ def _reload_attention_scales(layer: torch.nn.Module, info: LayerReloadingInfo) -
         _get_weight_loader(param)(*args.args, **args.kwargs)
 
     quant_method.process_weights_after_loading(layer)
+    release_device_memory_under_pressure(info.restore_device)
 
     _copy_and_restore_kernel_tensors(layer, info)
 
@@ -351,6 +353,7 @@ def _layerwise_process(layer: torch.nn.Module, info: LayerReloadingInfo):
     quant_method = getattr(layer, "quant_method", None)
     if isinstance(quant_method, QuantizeMethodBase):
         quant_method.process_weights_after_loading(layer)
+        release_device_memory_under_pressure(info.restore_device)
 
     # Copy processed values into original tensor storage (preserves cudagraph refs)
     # this code is a no-op if not reloading (because kernel tensors is empty)
